@@ -22,7 +22,7 @@ jobs:
           falcon_client_id: ${{ vars.FALCON_CLIENT_ID }}
           falcon_region: 'us-2'                 # keep YOUR working region
           path: '.'
-          report_formats: 'sarif'               # ask for SARIF -> converter runs
+          report_formats: 'json,sarif'               # ask for SARIF -> converter runs
           output_path: './scan-results/'        # DIRECTORY (trailing slash!)
           upload_results: true                  # 📮 also sends to CrowdStrike
           project_name: '${{ github.repository }}/${{ github.ref_name }}'
