@@ -29,7 +29,7 @@ jobs:
         env:
           FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
 
-      # Find the .sarif file the action created inside the directory
+      # Find the .sarif file the action created inside the directorys
       - name: Locate SARIF file
         if: always()
         id: findsarif
