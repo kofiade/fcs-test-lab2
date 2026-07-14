@@ -20,7 +20,7 @@ jobs:
         uses: crowdstrike/fcs-action@v4.0.1
         with:
           falcon_client_id: ${{ vars.FALCON_CLIENT_ID }}
-          falcon_region: 'us-1'                 # keep YOUR working region
+          falcon_region: 'us-2'                 # keep YOUR working region
           path: '.'
           report_formats: 'sarif'               # ask for SARIF -> converter runs
           output_path: './scan-results/'        # DIRECTORY (trailing slash!)
