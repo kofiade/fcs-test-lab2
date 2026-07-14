@@ -12,37 +12,36 @@ jobs:
   scan-my-code:
     runs-on: ubuntu-latest
     steps:
-      # Step A: Grab a copy of our files
       - name: Get the code
         uses: actions/checkout@v4
 
-      # Step B: Run the scan, make SARIF, AND upload to CrowdStrike
       - name: Run FCS IaC Scan
         id: fcs
         uses: crowdstrike/fcs-action@v4.0.1
         with:
           falcon_client_id: ${{ vars.FALCON_CLIENT_ID }}
-          falcon_region: 'us-2'
+          falcon_region: 'us-2'          # keep YOUR working region here
           path: '.'
           report_formats: 'sarif'
-          output_path: './results/scan.json'   # let it write JSON here...
-          upload_results: true                  # 📮 send to CrowdStrike console
+          output_path: './results/scan.sarif'   # <- end in .sarif this time
+          upload_results: true
           project_name: '${{ github.repository }}/${{ github.ref_name }}'
         env:
           FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
 
-      # Step C: Find the REAL sarif file the action created
       - name: Find the SARIF file
         if: always()
         id: findsarif
         run: |
-          echo "Here is what the scan produced:"
-          find ./results -type f | sort
-          SARIF=$(find ./results -name '*.sarif' | head -n 1)
-          echo "Found SARIF file: $SARIF"
+          echo "===== ALL .json and .sarif files anywhere in the workspace ====="
+          find "$GITHUB_WORKSPACE" \( -name '*.sarif' -o -name '*.json' \) -type f 2>/dev/null | sort
+          echo "===== also checking /tmp ====="
+          find /tmp -name '*.sarif' -type f 2>/dev/null | sort
+          echo "==============================================================="
+          SARIF=$(find "$GITHUB_WORKSPACE" -name '*.sarif' -type f 2>/dev/null | head -n 1)
+          echo "Chosen SARIF file: '$SARIF'"
           echo "sarif_path=$SARIF" >> "$GITHUB_OUTPUT"
 
-      # Step D: Hand that real SARIF file to the GitHub Security tab
       - name: Upload report to GitHub Security tab
         if: always() && steps.findsarif.outputs.sarif_path != ''
         uses: github/codeql-action/upload-sarif@v3
