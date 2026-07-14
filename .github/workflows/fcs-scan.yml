@@ -22,7 +22,7 @@ jobs:
         uses: crowdstrike/fcs-action@v4.0.1
         with:
           falcon_client_id: ${{ vars.FALCON_CLIENT_ID }}
-          falcon_region: 'us-1'
+          falcon_region: 'us-2'
           path: '.'
           report_formats: 'sarif'
           output_path: './results/scan.json'   # let it write JSON here...
