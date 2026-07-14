@@ -1,0 +1,40 @@
+name: FCS IaC Security Scan
+
+on:
+  push:
+  workflow_dispatch:
+
+# Let the robot write to the GitHub Security tab
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  scan-my-code:
+    runs-on: ubuntu-latest
+    steps:
+      # Step A: Grab a copy of our files
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      # Step B: Run the scan, make a SARIF report, AND upload to CrowdStrike
+      - name: Run FCS IaC Scan
+        id: fcs                       # gives this step a name tag so we can check it later
+        uses: crowdstrike/fcs-action@v4.0.1
+        with:
+          falcon_client_id: ${{ vars.FALCON_CLIENT_ID }}
+          falcon_region: 'us-2'
+          path: '.'
+          report_formats: 'sarif'     # make a report GitHub can read
+          output_path: './scan-results.sarif'
+          upload_results: true        # 📮 mail a copy to the CrowdStrike console
+          project_name: '${{ github.repository }}/${{ github.ref_name }}'
+        env:
+          FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
+
+      # Step C: Hand the SARIF report to the GitHub Security tab
+      - name: Upload report to GitHub Security tab
+        if: always()                  # do this even when the scan found problems
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ./scan-results.sarif
