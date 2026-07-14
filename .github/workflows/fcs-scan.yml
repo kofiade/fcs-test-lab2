@@ -20,28 +20,85 @@ jobs:
         uses: crowdstrike/fcs-action@v4.0.1
         with:
           falcon_client_id: ${{ vars.FALCON_CLIENT_ID }}
-          falcon_region: 'us-2'                 # keep YOUR working region
+          falcon_region: 'us-2'
           path: '.'
-          report_formats: 'sarif'               # ask for SARIF -> converter runs
-          output_path: './scan-results/'        # DIRECTORY (trailing slash!)
-          upload_results: true                  # 📮 also sends to CrowdStrike
+          report_formats: 'json'
+          output_path: './scan-results/'
+          upload_results: true
           project_name: '${{ github.repository }}/${{ github.ref_name }}'
         env:
           FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
 
-      # Find the .sarif file the action created inside the directorys
-      - name: Locate SARIF file
+      - name: Convert FCS JSON to SARIF
         if: always()
-        id: findsarif
+        id: convert
         run: |
-          echo "Files produced:"
-          find ./scan-results -type f | sort
-          SARIF=$(find ./scan-results -name '*.sarif' -type f | head -n 1)
-          echo "SARIF file: '$SARIF'"
-          echo "sarif_path=$SARIF" >> "$GITHUB_OUTPUT"
+          set -e
+          JSON=$(find ./scan-results -name '*.json' -type f | head -n 1)
+          echo "Using JSON report: $JSON"
+          if [ -z "$JSON" ]; then
+            echo "No JSON report found."
+            echo "made_sarif=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          python3 - "$JSON" ./fcs.sarif <<'PY'
+          import json, sys
+          src, dst = sys.argv[1], sys.argv[2]
+          with open(src) as f:
+              data = json.load(f)
+          sev_level = {"critical":"error","high":"error","medium":"warning",
+                       "low":"note","informational":"note"}
+          sev_score = {"critical":"9.5","high":"8.0","medium":"5.0",
+                       "low":"3.0","informational":"1.0"}
+          rules, results, seen = [], [], set()
+          for rule in data.get("rule_detections", []):
+              rid = rule.get("rule_uuid") or rule.get("rule_name", "unknown")
+              s = rule.get("severity", "").lower()
+              if rid not in seen:
+                  seen.add(rid)
+                  rules.append({
+                      "id": rid,
+                      "name": rule.get("rule_name", "rule"),
+                      "shortDescription": {"text": rule.get("rule_name", "rule")},
+                      "fullDescription": {"text": rule.get("description", "")},
+                      "helpUri": "https://crowdstrike.com",
+                      "properties": {"security-severity": sev_score.get(s, "1.0")},
+                  })
+              for det in rule.get("detections", []):
+                  msg = det.get("reason") or rule.get("description", "Finding")
+                  rec = det.get("recommendation", "")
+                  if rec:
+                      msg = f"{msg}. Recommendation: {rec}"
+                  results.append({
+                      "ruleId": rid,
+                      "level": sev_level.get(s, "note"),
+                      "message": {"text": msg},
+                      "locations": [{"physicalLocation": {
+                          "artifactLocation": {"uri": det.get("file", "unknown")},
+                          "region": {"startLine": max(int(det.get("line", 1)), 1)},
+                      }}],
+                  })
+          sarif = {
+              "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+              "version": "2.1.0",
+              "runs": [{
+                  "tool": {"driver": {
+                      "name": "CrowdStrike FCS",
+                      "informationUri": "https://crowdstrike.com",
+                      "version": str(data.get("fcs_version", "unknown")),
+                      "rules": rules}},
+                  "results": results}],
+          }
+          with open(dst, "w") as f:
+              json.dump(sarif, f, indent=2)
+          print(f"Wrote {len(results)} findings to {dst}")
+          PY
+
+          echo "made_sarif=true" >> "$GITHUB_OUTPUT"
 
       - name: Upload SARIF to GitHub Security tab
-        if: always() && steps.findsarif.outputs.sarif_path != ''
+        if: always() && steps.convert.outputs.made_sarif == 'true'
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: ${{ steps.findsarif.outputs.sarif_path }}
+          sarif_file: ./fcs.sarif
